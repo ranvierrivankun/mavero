@@ -1,0 +1,178 @@
+<?php
+defined('BASEPATH') or exit('No direct script access allowed');
+
+class Setting extends CI_Controller
+{
+    public function __construct()
+    {
+        parent::__construct();
+        check_login();
+        $this->load->model('Builder_model');
+    }
+
+    // Tampilan View setting/index
+    public function index()
+    {
+        // Mengambil data setting dari database
+        $setting = $this->db->select('*')->from('setting')->get()->row();
+
+        // Membentuk judul halaman dengan nama setting
+        $title = $setting->name . ' - Setting Account';
+        $title_page = 'Setting Account';
+
+        // Menyusun data untuk dikirim ke tampilan
+        $data['setting'] = [
+            'title' => $title,
+            'title_page' => $title_page
+        ];
+
+        // Memuat tampilan dengan data yang telah disusun
+        $this->load->view('template/header', $data);
+        $this->load->view('template/sidebar');
+        $this->load->view('template/navbar');
+        $this->load->view('setting/index', $data);
+        $this->load->view('template/footer');
+    }
+
+    // Cek Username pada Database
+    public function check_unique_username($username, $id)
+    {
+        $existing_user = $this->Builder_model->get('user_db', array('username' => $username));
+
+        if ($existing_user && $existing_user['id'] != $id) {
+            $this->form_validation->set_message('check_unique_username', 'This username is already taken.');
+            return false;
+        }
+        return true;
+    }
+
+    // Cek Email pada Database
+    public function check_unique_email($email, $id)
+    {
+        $existing_user = $this->Builder_model->get('user_db', array('email' => $email));
+
+        if ($existing_user && $existing_user['id'] != $id) {
+            $this->form_validation->set_message('check_unique_email', 'This email is already taken.');
+            return false;
+        }
+        return true;
+    }
+
+    // Proses Edit Information
+    public function EditForm()
+    {
+        // Mendapatkan data dari permintaan POST
+        $id = $this->input->post('id', true);
+        $username = $this->input->post('username', true);
+        $name = $this->input->post('name', true);
+        $email = $this->input->post('email', true);
+        $mobile = $this->input->post('mobile', true);
+
+        // Set validation rules
+        $this->form_validation->set_rules('username', 'Username', 'required|callback_check_unique_username[' . $id . ']');
+        $this->form_validation->set_rules('name', 'Name', 'required');
+        $this->form_validation->set_rules('email', 'Email', 'required|valid_email|callback_check_unique_email[' . $id . ']');
+        $this->form_validation->set_rules('mobile', 'Mobile', 'required|numeric');
+
+        // Validasi data yang harus diisi
+        if ($this->form_validation->run() == false) {
+            // Jika kosong, mengembalikan pesan error
+            $response['status'] = 'error';
+            $response['message'] = validation_errors();
+
+            // Menambahkan pesan kesalahan ke dalam respons
+            $response['username_error'] = form_error('username');
+            $response['name_error'] = form_error('name');
+            $response['email_error'] = form_error('email');
+            $response['mobile_error'] = form_error('mobile');
+        } else {
+            // Data yang akan disimpan
+            $data = array(
+                'username' => $username,
+                'name' => $name,
+                'email' => $email,
+                'mobile' => $mobile
+            );
+
+            // Melakukan update data pengguna di database user_db
+            $this->Builder_model->update('user_db', $data, 'id', $id);
+
+            // Menyiapkan respons JSON
+            $response = array();
+
+            // Setelah berhasil update
+            $response['status'] = 'success';
+            $response['message'] = 'Data updated successfully';
+        }
+
+        // Mengirim respons JSON
+        echo json_encode($response);
+    }
+
+    // Cek old_pasword pada Database
+    public function check_old_password($oldPassword, $id)
+    {
+        $user = $this->db->get_where('user_db', ['id' => $id])->row_array();
+
+        if (password_verify($oldPassword, $user['password'])) {
+            return true;
+        } else {
+            $this->form_validation->set_message('check_old_password', 'The old password is incorrect.');
+            return false;
+        }
+    }
+
+    // Cek Password baru sama dengan password lama
+    public function check_different_passwords($password)
+    {
+        $old_password = $this->input->post('old_password');
+        if ($password === $old_password) {
+            $this->form_validation->set_message('check_different_passwords', 'The New Password field must be different from the Old Password field.');
+            return false;
+        }
+        return true;
+    }
+
+    // Proses Security Account}
+    public function SecurityForm()
+    {
+        // Mendapatkan data dari permintaan POST
+        $id = $this->input->post('id', true);
+        $password = $this->input->post('password', true);
+
+        // Set validation rules
+        $this->form_validation->set_rules('old_password', 'Old Password', 'required|callback_check_old_password[' . $id . ']');
+        $this->form_validation->set_rules('password', 'New Password', 'required|matches[verify_password]|callback_check_different_passwords');
+        $this->form_validation->set_rules('verify_password', 'Verify Password', 'required|matches[password]|callback_check_different_passwords');
+
+        // Run validation
+        if ($this->form_validation->run() == false) {
+            // Jika ada error validasi
+            $response['status'] = 'error';
+            $response['message'] = validation_errors();
+
+            // Menambahkan pesan kesalahan ke dalam respons
+            $response['old_password_error'] = form_error('old_password');
+            $response['password_error'] = form_error('password');
+            $response['verify_password_error'] = form_error('verify_password');
+        } else {
+            // Hash Password
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+
+            // Data yang akan disimpan
+            $data = array(
+                'password' => $hashedPassword
+            );
+
+            // Melakukan update data pengguna di database user_db
+            $this->Builder_model->update('user_db', $data, 'id', $id);
+
+            // Setelah berhasil update
+            $response['status'] = 'success';
+            $response['message'] = 'Password updated successfully';
+        }
+
+        // Mengirim respons JSON
+        echo json_encode($response);
+    }
+}
